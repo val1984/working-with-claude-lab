@@ -64,9 +64,15 @@ slipping all summer. The dashboard is meant to make that visible.
 ### Run it with PostgreSQL (the default)
 
 ```bash
-docker compose up -d db      # PostgreSQL 16 on localhost:5432, database/user/password "ops"
+docker compose up -d db      # PostgreSQL 16 on 127.0.0.1:5432, database/user/password "ops"
 ./mvnw spring-boot:run       # then open http://localhost:8080
 ```
+
+Both listen on loopback only, so nothing is reachable from other machines: the
+database password is public and the API has no authentication. To serve the wall
+screen or anything else on the office network, start the app with
+`SERVER_ADDRESS=0.0.0.0` (or the machine's office-network IP to expose it on that
+interface only). The database stays on loopback; the app is its only client.
 
 Flyway creates the schema and loads the seed on first start (`V1__schema.sql`,
 `V2__seed.sql`). The database keeps its data between runs; `docker compose down -v`
@@ -102,7 +108,7 @@ npm test                    # Frontend: 45 tests (Jest + jsdom)
 `.mcp.json` at the root registers a `postgres` MCP server that Claude Code starts on
 demand with `npx -y @modelcontextprotocol/server-postgres`. It is read-only (every
 query runs in a `READ ONLY` transaction) and points at the local compose database,
-`postgresql://ops:ops@localhost:5432/ops`. In Codespaces the dev container shares the
+`postgresql://ops:ops@127.0.0.1:5432/ops`. In Codespaces the dev container shares the
 database's network, so the same address works there. `/mcp` inside `claude` shows it
 as `postgres`. Without Docker, the same question can be answered from
 `docs/data/deliveries-last-30-days.csv`.

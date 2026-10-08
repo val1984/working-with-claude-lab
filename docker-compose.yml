@@ -11,7 +11,8 @@ services:
       POSTGRES_USER: ops
       POSTGRES_PASSWORD: ops
     # Loopback only: the password above is public, so the database must not be
-    # reachable from other machines on the network.
+    # reachable from other machines on the network. IPv4 only: clients should
+    # connect to 127.0.0.1, not "localhost", which may resolve to ::1.
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
