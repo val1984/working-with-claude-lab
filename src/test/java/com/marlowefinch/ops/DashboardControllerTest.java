@@ -1,16 +1,21 @@
 package com.marlowefinch.ops;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -81,10 +86,11 @@ class DashboardControllerTest {
     }
 
     @Test
-    void lateWithFromAfterToReturnsAnEmptyList() throws Exception {
+    void lateWithFromAfterToIsRejected() throws Exception {
         mvc.perform(get("/api/deliveries/late").param("from", "2026-09-21").param("to", "2026-09-01"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("from must be on or before to"));
     }
 
     @Test
@@ -111,14 +117,159 @@ class DashboardControllerTest {
     }
 
     /**
-     * Documents the current behaviour: query parameters are not validated, so a malformed
-     * date is parsed straight into an exception and the client gets a 500. TODO-232 turns
-     * this into a 400 with an errors list. (A real HTTP call is used here because MockMvc
-     * rethrows unhandled exceptions instead of rendering the error response.)
+     * A malformed date used to blow up in LocalDate.parse and come back as a 500 (TODO-232).
+     * It is now a 400 with an errors list. A real HTTP call is kept so the rendered response,
+     * not just the MockMvc view of it, is checked.
      */
     @Test
-    void malformedFromCurrentlyProducesA5xx() {
+    void malformedFromProducesA400WithAnErrorsList() {
         ResponseEntity<String> response = http.getForEntity("/api/kpis?from=next-tuesday", String.class);
-        assertThat(response.getStatusCode().is5xxServerError()).isTrue();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getHeaders().getContentType()).isNotNull();
+        assertThat(response.getHeaders().getContentType().isCompatibleWith(MediaType.APPLICATION_JSON)).isTrue();
+        assertThat(response.getBody()).isEqualTo("{\"errors\":[\"from must be an ISO date (YYYY-MM-DD)\"]}");
+    }
+
+    // TODO-232: query parameter validation
+
+    @Test
+    void malformedToIsRejected() throws Exception {
+        mvc.perform(get("/api/kpis").param("to", "21/09/2026"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("to must be an ISO date (YYYY-MM-DD)"));
+    }
+
+    @Test
+    void aRangeOf367DaysIsRejected() throws Exception {
+        mvc.perform(get("/api/kpis").param("from", "2025-01-01").param("to", "2026-01-03"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("the range may span at most 366 days"));
+    }
+
+    @Test
+    void aRangeOfExactly366DaysIsAccepted() throws Exception {
+        mvc.perform(get("/api/kpis").param("from", "2025-09-20").param("to", "2026-09-21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2025-09-20"))
+                .andExpect(jsonPath("$.to").value("2026-09-21"));
+    }
+
+    @Test
+    void aSingleDayRangeIsAccepted() throws Exception {
+        mvc.perform(get("/api/kpis").param("from", "2026-09-21").param("to", "2026-09-21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2026-09-21"))
+                .andExpect(jsonPath("$.to").value("2026-09-21"));
+    }
+
+    @Test
+    void onlyFromGivenDefaultsToToToday() throws Exception {
+        mvc.perform(get("/api/kpis").param("from", "2026-09-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2026-09-01"))
+                .andExpect(jsonPath("$.to").value("2026-09-21"));
+    }
+
+    @Test
+    void blankParametersFallBackToTheDefaults() throws Exception {
+        mvc.perform(get("/api/kpis").param("from", "").param("to", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2026-08-22"))
+                .andExpect(jsonPath("$.to").value("2026-09-21"));
+    }
+
+    @Test
+    void limitZeroIsRejected() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("limit must be an integer between 1 and 500"));
+    }
+
+    @Test
+    void limit501IsRejected() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("limit", "501"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("limit must be an integer between 1 and 500"));
+    }
+
+    @Test
+    void nonNumericLimitIsRejected() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("limit", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("limit must be an integer between 1 and 500"));
+    }
+
+    @Test
+    void limitBoundsOneAndFiveHundredAreAccepted() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)));
+        mvc.perform(get("/api/deliveries/late").param("limit", "500"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void lateWithoutLimitDefaultsTo20Rows() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("from", "2025-09-21").param("to", "2026-09-21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(20)));
+    }
+
+    @Test
+    void severalProblemsProduceSeveralErrors() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("from", "next-tuesday").param("to", "soon").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(3)))
+                .andExpect(jsonPath("$.errors", containsInAnyOrder(
+                        "from must be an ISO date (YYYY-MM-DD)",
+                        "to must be an ISO date (YYYY-MM-DD)",
+                        "limit must be an integer between 1 and 500")));
+    }
+
+    @Test
+    void aBackwardsRangeAndABadLimitAreBothReported() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("from", "2026-09-21").param("to", "2026-09-01").param("limit", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(2)))
+                .andExpect(jsonPath("$.errors", containsInAnyOrder(
+                        "from must be on or before to",
+                        "limit must be an integer between 1 and 500")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/kpis", "/api/deliveries/on-time", "/api/deliveries/late", "/api/tickets/by-category"})
+    void everyRangedEndpointRejectsAMalformedDate(String endpoint) throws Exception {
+        mvc.perform(get(endpoint).param("from", "next-tuesday"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("from must be an ISO date (YYYY-MM-DD)"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/kpis", "/api/deliveries/on-time", "/api/deliveries/late", "/api/tickets/by-category"})
+    void everyRangedEndpointRejectsFromAfterTo(String endpoint) throws Exception {
+        mvc.perform(get(endpoint).param("from", "2026-09-21").param("to", "2026-09-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value("from must be on or before to"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/kpis", "/api/deliveries/on-time", "/api/deliveries/late", "/api/tickets/by-category"})
+    void everyRangedEndpointRejectsA367DayRange(String endpoint) throws Exception {
+        mvc.perform(get(endpoint).param("from", "2025-01-01").param("to", "2026-01-03"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value("the range may span at most 366 days"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/kpis", "/api/deliveries/on-time", "/api/deliveries/late", "/api/tickets/by-category"})
+    void everyRangedEndpointStillAcceptsAValidRange(String endpoint) throws Exception {
+        mvc.perform(get(endpoint).param("from", "2026-07-01").param("to", "2026-07-31"))
+                .andExpect(status().isOk());
     }
 }
