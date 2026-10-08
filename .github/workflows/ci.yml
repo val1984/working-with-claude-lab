@@ -1,0 +1,35 @@
+# Runs both test suites through the release check on every pull request and on
+# pushes to main. The check fails on failing, erroring or skipped tests, on a count
+# below the baseline, and on README counts that disagree with the baseline; see
+# tools/release_check.py.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  release-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: npm ci
+
+      - run: python3 tools/release_check.py
