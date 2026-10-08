@@ -92,7 +92,7 @@ is "the last 30 days ending today".
 ### Test it
 
 ```bash
-./mvnw test                 # Java: 25 tests (JUnit 5, H2, MockMvc)
+./mvnw test                 # Java: 54 tests (JUnit 5, H2, MockMvc)
 npm install                 # once
 npm test                    # Frontend: 45 tests (Jest + jsdom)
 ```
@@ -161,7 +161,8 @@ All endpoints are `GET`, return JSON and are read-only. `from` and `to` are ISO 
 | `/api/tickets/by-category?from&to` | Tickets opened in the range per category: still open, and total |
 | `/api/vendors` | Every vendor with annual spend, contract end, notice days, owner, days until contract end and whether that is inside the notice window |
 
-There is no validation of `from`, `to` or `limit`: a malformed date is a 500, `from`
-after `to` is an empty result, and `limit` can be anything. That is ticket TODO-232.
+`from` and `to` must be ISO dates (`YYYY-MM-DD`) with `from` on or before `to` and at
+most 366 days apart; `limit` must be an integer from 1 to 500 (default 20). Bad input
+returns `400` with `{"errors": [...]}` listing every problem (TODO-232).
 
 Workshop material is in `workshop/` and `docs/`.
