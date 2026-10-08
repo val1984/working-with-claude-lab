@@ -13,6 +13,8 @@
   var DEFAULT_PRESET_DAYS = 30;
   var LATE_LIMIT = 20;
   var SVG_NS = 'http://www.w3.org/2000/svg';
+  var THEME_KEY = 'ops-theme';
+  var DARK_QUERY = '(prefers-color-scheme: dark)';
 
   // ---------- API client ----------
 
@@ -122,7 +124,8 @@
       chartOnTime: document.getElementById('chart-on-time'),
       chartTickets: document.getElementById('chart-tickets'),
       lateBody: document.getElementById('late-body'),
-      vendors: document.getElementById('vendors-list')
+      vendors: document.getElementById('vendors-list'),
+      themeToggle: document.getElementById('theme-toggle')
     };
 
     var state = {
@@ -136,7 +139,8 @@
       tickets: [],
       vendors: [],
       error: null,
-      vendorsError: null
+      vendorsError: null,
+      theme: null
     };
 
     function svgEl(name, attrs, text) {
@@ -345,6 +349,71 @@
       });
     });
 
+    // ---------- Theme ----------
+    // The OS colour-scheme preference is the default. Only a choice that differs from it
+    // is stored, so clearing the override (or picking the OS theme again) follows the OS.
+
+    var view = document.defaultView || {};
+    var darkQuery = view.matchMedia ? view.matchMedia(DARK_QUERY) : null;
+
+    function preferredTheme() {
+      return darkQuery && darkQuery.matches ? 'dark' : 'light';
+    }
+
+    function otherTheme(theme) {
+      return theme === 'dark' ? 'light' : 'dark';
+    }
+
+    /** The stored override, or null. Storage can be missing or throw (private mode). */
+    function storedTheme() {
+      try {
+        var value = view.localStorage.getItem(THEME_KEY);
+        return value === 'light' || value === 'dark' ? value : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function storeTheme(theme) {
+      try {
+        if (theme === preferredTheme()) {
+          view.localStorage.removeItem(THEME_KEY);
+        } else {
+          view.localStorage.setItem(THEME_KEY, theme);
+        }
+      } catch (err) {
+        // The theme still applies for this visit.
+      }
+    }
+
+    function applyTheme(theme) {
+      state.theme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      els.themeToggle.textContent = 'Switch to ' + otherTheme(theme);
+    }
+
+    /** Apply the stored override if it still differs from the OS, otherwise the OS theme. */
+    function resolveTheme() {
+      var stored = storedTheme();
+      if (stored === preferredTheme()) {
+        storeTheme(stored);
+        stored = null;
+      }
+      applyTheme(stored || preferredTheme());
+    }
+
+    function toggleTheme() {
+      var theme = otherTheme(state.theme);
+      storeTheme(theme);
+      applyTheme(theme);
+    }
+
+    els.themeToggle.addEventListener('click', toggleTheme);
+    if (darkQuery && darkQuery.addEventListener) {
+      darkQuery.addEventListener('change', resolveTheme);
+    }
+    resolveTheme();
+
     var ready = api.health().then(function (health) {
       state.today = health.today;
       var range = applyPreset(DEFAULT_PRESET_DAYS, state.today);
@@ -359,6 +428,7 @@
       state: state,
       load: load,
       selectPreset: selectPreset,
+      toggleTheme: toggleTheme,
       api: api
     };
   }
