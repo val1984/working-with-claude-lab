@@ -17,30 +17,20 @@ Invoke it with `/release-check`.
 
 ## Steps
 
-1. Run `./mvnw test`. Capture the line that starts with `Tests run:` from the
-   summary at the end (the one after all the per-class lines).
-2. Run `npm test`. Capture the line that starts with `Tests:`.
-3. Compare both counts with the baseline below.
-4. Report using the output format.
+1. Run `python3 tools/release_check.py`. It runs both suites, reads the counts from
+   the Surefire XML and Jest JSON reports, checks them against the baseline, and
+   prints the report. It exits 0 for READY and 1 for NOT READY.
+2. For every problem in its Notes, find the cause before reporting: which test was
+   deleted, skipped or failing, and in which commit or uncommitted change.
+3. Report the script's output as it is, then one line per cause you found.
 
 ## Constraints
 
-- Baseline: **Java 25**, **Jest 45**.
-- A count BELOW the baseline is a **FAIL**, even if every test that ran passed.
-  Fewer tests means something was deleted or skipped; find out what before
-  reporting.
+- The baseline lives in `BASELINE` in `tools/release_check.py`. The script is the
+  rule; do not override its verdict. A suite FAILs when it did not run, when any
+  test failed, errored or was skipped, or when fewer tests ran than the baseline.
 - A count above the baseline is fine when the change adds tests. In that case,
-  raise the baseline in this file as part of the same change so the next run
-  checks against the new number.
+  raise `BASELINE` and the counts in the README's "Test it" section in the same
+  change; the script fails if they disagree.
 - Never edit, skip or delete a test to make the check pass.
 - Do not open the PR from this skill; it only reports.
-
-## Output format
-
-```
-Release check
-  Java:  <n> run, <f> failures, <e> errors   (baseline 25)  PASS|FAIL
-  Jest:  <n> passed, <t> total               (baseline 45)  PASS|FAIL
-  Verdict: READY | NOT READY
-  Notes: <one line per problem, or "none">
-```
