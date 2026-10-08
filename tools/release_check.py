@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
-BASELINE = {"java": 25, "jest": 45}
+BASELINE = {"java": 25, "jest": 51}
 
 ROOT = Path(__file__).resolve().parent.parent
 SUREFIRE_REPORTS = ROOT / "target" / "surefire-reports"

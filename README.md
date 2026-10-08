@@ -94,7 +94,7 @@ is "the last 30 days ending today".
 ```bash
 ./mvnw test                 # Java: 25 tests (JUnit 5, H2, MockMvc)
 npm install                 # once
-npm test                    # Frontend: 45 tests (Jest + jsdom)
+npm test                    # Frontend: 51 tests (Jest + jsdom)
 ```
 
 ### The data connection (Lab 2)
